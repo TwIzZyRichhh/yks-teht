@@ -29,3 +29,8 @@ td {
   font-weight: bold;
   background-color: rgb(194, 194, 235);
 }
+
+#map {
+  width: 100%;
+  height: 400px;
+}

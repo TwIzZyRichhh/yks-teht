@@ -1,7 +1,7 @@
 const apiUrl = 'https://media1.edu.metropolia.fi/restaurant/api/v1';
 
 const positionOptions = {
-  enableHighAccuracy: false,
+  enableHighAccuracy: true,
   timeout: 10000,
   maximumAge: 600000,
 };

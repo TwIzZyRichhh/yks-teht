@@ -1,8 +1,9 @@
-import {errorModal, restaurantModal, restaurantRow} from './components';
-import {fetchData} from './functions';
+import {initAuth} from './auth.js';
+import {errorModal, restaurantModal, restaurantRow} from './components.js';
+import {fetchData} from './functions.js';
 import {Menu} from './types/Menu';
 import {Restaurant} from './types/Restaurant';
-import {apiUrl, positionOptions} from './variables';
+import {apiUrl, positionOptions} from './variables.js';
 
 const modal = document.querySelector('dialog');
 if (!modal) {
@@ -13,13 +14,15 @@ modal.addEventListener('click', () => {
   modal.close();
 });
 
+initAuth().catch((err) => console.error('initAuth failed:', err));
+
 const calculateDistance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
 const createTable = (restaurants: Restaurant[]) => {
-  const table = document.querySelector('table');
+  const table = document.querySelector('tbody');
   if (!table) {
-    throw new Error('Table not found');
+    throw new Error('Table body not found');
   }
   table.innerHTML = '';
   restaurants.forEach((restaurant) => {
@@ -55,6 +58,58 @@ const createTable = (restaurants: Restaurant[]) => {
   });
 };
 
+const fillSelect = (select: HTMLSelectElement, values: string[]) => {
+  const uniqueValues = Array.from(new Set(values)).sort();
+  uniqueValues.forEach((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  });
+};
+
+const setupFilters = (restaurants: Restaurant[]) => {
+  const citySelect = document.querySelector<HTMLSelectElement>('#city-filter');
+  const companySelect =
+    document.querySelector<HTMLSelectElement>('#company-filter');
+  const searchInput = document.querySelector<HTMLInputElement>('#search');
+  const resetBtn = document.querySelector<HTMLButtonElement>('#reset');
+
+  if (!citySelect || !companySelect || !searchInput || !resetBtn) {
+    throw new Error('Filter elements not found');
+  }
+
+  fillSelect(
+    citySelect,
+    restaurants.map((restaurant) => restaurant.city)
+  );
+  fillSelect(
+    companySelect,
+    restaurants.map((restaurant) => restaurant.company)
+  );
+
+  const applyFilters = () => {
+    const filtered = restaurants.filter(
+      (restaurant) =>
+        (!citySelect.value || restaurant.city === citySelect.value) &&
+        (!companySelect.value || restaurant.company === companySelect.value) &&
+        restaurant.name.toLowerCase().includes(searchInput.value.toLowerCase())
+    );
+    createTable(filtered);
+  };
+
+  citySelect.addEventListener('change', applyFilters);
+  companySelect.addEventListener('change', applyFilters);
+  searchInput.addEventListener('input', applyFilters);
+
+  resetBtn.addEventListener('click', () => {
+    citySelect.value = '';
+    companySelect.value = '';
+    searchInput.value = '';
+    applyFilters();
+  });
+};
+
 const error = (err: GeolocationPositionError) => {
   console.warn(`ERROR(${err.code}): ${err.message}`);
 };
@@ -76,42 +131,7 @@ const success = async (pos: GeolocationPosition) => {
       return distanceA - distanceB;
     });
     createTable(restaurants);
-    // buttons for filtering
-    const sodexoBtn = document.querySelector('#sodexo');
-    const compassBtn = document.querySelector('#compass');
-    const resetBtn = document.querySelector('#reset');
-
-    if (!sodexoBtn) {
-      throw new Error('Sodexo button not found');
-    }
-
-    sodexoBtn.addEventListener('click', () => {
-      const sodexoRestaurants = restaurants.filter(
-        (restaurant: Restaurant) => restaurant.company === 'Sodexo'
-      );
-      console.log(sodexoRestaurants);
-      createTable(sodexoRestaurants);
-    });
-
-    if (!compassBtn) {
-      throw new Error('Compass button not found');
-    }
-
-    compassBtn.addEventListener('click', () => {
-      const compassRestaurants = restaurants.filter(
-        (restaurant: Restaurant) => restaurant.company === 'Compass Group'
-      );
-      console.log(compassRestaurants);
-      createTable(compassRestaurants);
-    });
-
-    if (!resetBtn) {
-      throw new Error('Reset button not found');
-    }
-
-    resetBtn.addEventListener('click', () => {
-      createTable(restaurants);
-    });
+    setupFilters(restaurants);
   } catch (error) {
     modal.innerHTML = errorModal((error as Error).message);
     modal.showModal();

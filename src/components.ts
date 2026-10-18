@@ -52,3 +52,5 @@ const errorModal = (message: string) => {
 };
 
 export {restaurantRow, restaurantModal, errorModal};
+
+

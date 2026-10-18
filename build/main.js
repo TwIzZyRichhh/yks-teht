@@ -1,6 +1,7 @@
 import { initAuth } from './auth.js';
 import { errorModal, restaurantModal, restaurantRow } from './components.js';
 import { fetchData } from './functions.js';
+import { flyToRestaurant, initMap, showRestaurantMarkers, showUserLocation } from './map.js';
 import { apiUrl, positionOptions } from './variables.js';
 const modal = document.querySelector('dialog');
 if (!modal) {
@@ -10,7 +11,37 @@ modal.addEventListener('click', () => {
     modal.close();
 });
 initAuth().catch((err) => console.error('initAuth failed:', err));
+try {
+    initMap();
+}
+catch (err) {
+    console.error('Map failed to start:', err);
+}
 const calculateDistance = (x1, y1, x2, y2) => Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+const selectRestaurant = async (restaurant) => {
+    try {
+        // remove all highlights
+        document.querySelectorAll('.highlight').forEach((high) => {
+            high.classList.remove('highlight');
+        });
+        // highlight the matching table row
+        document
+            .querySelector(`tr[data-id="${restaurant._id}"]`)
+            ?.classList.add('highlight');
+        flyToRestaurant(restaurant);
+        // add restaurant data to modal
+        modal.innerHTML = '';
+        const menu = await fetchData(apiUrl + `/restaurants/daily/${restaurant._id}/fi`);
+        console.log(menu);
+        const menuHtml = restaurantModal(restaurant, menu);
+        modal.insertAdjacentHTML('beforeend', menuHtml);
+        modal.showModal();
+    }
+    catch (error) {
+        modal.innerHTML = errorModal(error.message);
+        modal.showModal();
+    }
+};
 const createTable = (restaurants) => {
     const table = document.querySelector('tbody');
     if (!table) {
@@ -19,31 +50,12 @@ const createTable = (restaurants) => {
     table.innerHTML = '';
     restaurants.forEach((restaurant) => {
         const tr = restaurantRow(restaurant);
+        tr.dataset.id = restaurant._id;
+        tr.addEventListener('click', () => selectRestaurant(restaurant));
         table.appendChild(tr);
-        tr.addEventListener('click', async () => {
-            try {
-                // remove all highlights
-                const allHighs = document.querySelectorAll('.highlight');
-                allHighs.forEach((high) => {
-                    high.classList.remove('highlight');
-                });
-                // add highlight
-                tr.classList.add('highlight');
-                // add restaurant data to modal
-                modal.innerHTML = '';
-                // fetch menu
-                const menu = await fetchData(apiUrl + `/restaurants/daily/${restaurant._id}/fi`);
-                console.log(menu);
-                const menuHtml = restaurantModal(restaurant, menu);
-                modal.insertAdjacentHTML('beforeend', menuHtml);
-                modal.showModal();
-            }
-            catch (error) {
-                modal.innerHTML = errorModal(error.message);
-                modal.showModal();
-            }
-        });
     });
+    // keep the map markers in sync with the table
+    showRestaurantMarkers(restaurants, selectRestaurant);
 };
 const fillSelect = (select, values) => {
     const uniqueValues = Array.from(new Set(values)).sort();
@@ -65,9 +77,10 @@ const setupFilters = (restaurants) => {
     fillSelect(citySelect, restaurants.map((restaurant) => restaurant.city));
     fillSelect(companySelect, restaurants.map((restaurant) => restaurant.company));
     const applyFilters = () => {
+        const searchText = searchInput.value.trim().toLowerCase();
         const filtered = restaurants.filter((restaurant) => (!citySelect.value || restaurant.city === citySelect.value) &&
             (!companySelect.value || restaurant.company === companySelect.value) &&
-            restaurant.name.toLowerCase().includes(searchInput.value.toLowerCase()));
+            restaurant.name.toLowerCase().includes(searchText));
         createTable(filtered);
     };
     citySelect.addEventListener('change', applyFilters);
@@ -101,6 +114,7 @@ const success = async (pos) => {
         });
         createTable(restaurants);
         setupFilters(restaurants);
+        showUserLocation(crd.latitude, crd.longitude);
     }
     catch (error) {
         modal.innerHTML = errorModal(error.message);

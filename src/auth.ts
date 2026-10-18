@@ -36,6 +36,18 @@ const getCurrentUser = async (): Promise<User | null> => {
   }
 };
 
+// only the fields that were changed get sent
+type UserUpdate = {username?: string; email?: string};
+
+const updateUser = (update: UserUpdate) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return fetchData(apiUrl + '/users', {
+    method: 'PUT',
+    headers: {...json, Authorization: `Bearer ${token}`},
+    body: JSON.stringify(update),
+  });
+};
+
 const logout = () => localStorage.removeItem(TOKEN_KEY);
 
 // ---------- UI ----------
@@ -51,17 +63,35 @@ const initAuth = async () => {
   const registerForm =
     document.querySelector<HTMLFormElement>('#register-form');
 
-  if (!dialog || !openBtn || !closeBtn || !logoutBtn || !userInfo ||
-      !message || !loginForm || !registerForm) {
+  const profileDialog =
+    document.querySelector<HTMLDialogElement>('#profile-dialog');
+  const openProfileBtn =
+    document.querySelector<HTMLButtonElement>('#open-profile');
+  const closeProfileBtn =
+    document.querySelector<HTMLButtonElement>('#close-profile');
+  const profileForm = document.querySelector<HTMLFormElement>('#profile-form');
+  const profileMessage =
+    document.querySelector<HTMLParagraphElement>('#profile-message');
+
+  if (
+    !dialog || !openBtn || !closeBtn || !logoutBtn || !userInfo ||
+    !message || !loginForm || !registerForm || !profileDialog ||
+    !openProfileBtn || !closeProfileBtn || !profileForm || !profileMessage
+  ) {
     throw new Error('Auth elements not found');
   }
 
+  let currentUser: User | null = null;
+
   const showUser = (user: User | null) => {
+    currentUser = user;
     userInfo.textContent = user ? `Logged in as ${user.username}` : '';
     openBtn.hidden = !!user;
+    openProfileBtn.hidden = !user;
     logoutBtn.hidden = !user;
   };
 
+  // --- login / register ---
   openBtn.addEventListener('click', () => {
     message.textContent = '';
     dialog.showModal();
@@ -106,10 +136,56 @@ const initAuth = async () => {
     }
   });
 
+  // --- profile ---
+  openProfileBtn.addEventListener('click', () => {
+    if (!currentUser) return;
+    profileMessage.textContent = '';
+    // fill the form with the current details
+    (profileForm.elements.namedItem('username') as HTMLInputElement).value =
+      currentUser.username;
+    (profileForm.elements.namedItem('email') as HTMLInputElement).value =
+      currentUser.email;
+    profileDialog.showModal();
+  });
+  closeProfileBtn.addEventListener('click', () => profileDialog.close());
+
+  profileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(profileForm);
+    const update: UserUpdate = {};
+
+    const username = data.get('username') as string;
+    const email = data.get('email') as string;
+
+    // only send what actually changed
+    if (currentUser && username !== currentUser.username) {
+      update.username = username;
+    }
+    if (currentUser && email !== currentUser.email) {
+      update.email = email;
+    }
+
+    if (Object.keys(update).length === 0) {
+      profileMessage.style.color = '#b00020';
+      profileMessage.textContent = 'Nothing to update';
+      return;
+    }
+
+    try {
+      await updateUser(update);
+      // fetch the saved details from the server so the page shows the real values
+      const user = await getCurrentUser();
+      showUser(user);
+      profileMessage.style.color = 'green';
+      profileMessage.textContent = 'Details updated!';
+    } catch (err) {
+      profileMessage.style.color = '#b00020';
+      profileMessage.textContent = `Update failed: ${(err as Error).message}`;
+    }
+  });
+
   // restore session on page load
   showUser(await getCurrentUser());
 };
 
 export {initAuth, getCurrentUser, logout};
-
-

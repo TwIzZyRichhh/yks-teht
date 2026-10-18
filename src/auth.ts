@@ -111,3 +111,5 @@ const initAuth = async () => {
 };
 
 export {initAuth, getCurrentUser, logout};
+
+

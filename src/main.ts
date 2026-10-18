@@ -1,6 +1,7 @@
 import {initAuth} from './auth.js';
 import {errorModal, restaurantModal, restaurantRow} from './components.js';
 import {fetchData} from './functions.js';
+import {flyToRestaurant, initMap, showRestaurantMarkers, showUserLocation} from './map.js';
 import {Menu} from './types/Menu';
 import {Restaurant} from './types/Restaurant';
 import {apiUrl, positionOptions} from './variables.js';
@@ -16,8 +17,44 @@ modal.addEventListener('click', () => {
 
 initAuth().catch((err) => console.error('initAuth failed:', err));
 
+try {
+  initMap();
+} catch (err) {
+  console.error('Map failed to start:', err);
+}
+
 const calculateDistance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+
+const selectRestaurant = async (restaurant: Restaurant) => {
+  try {
+    // remove all highlights
+    document.querySelectorAll('.highlight').forEach((high) => {
+      high.classList.remove('highlight');
+    });
+    // highlight the matching table row
+    document
+      .querySelector(`tr[data-id="${restaurant._id}"]`)
+      ?.classList.add('highlight');
+
+    flyToRestaurant(restaurant);
+
+    // add restaurant data to modal
+    modal.innerHTML = '';
+    const menu = await fetchData<Menu>(
+      apiUrl + `/restaurants/daily/${restaurant._id}/fi`
+    );
+    console.log(menu);
+
+    const menuHtml = restaurantModal(restaurant, menu);
+    modal.insertAdjacentHTML('beforeend', menuHtml);
+
+    modal.showModal();
+  } catch (error) {
+    modal.innerHTML = errorModal((error as Error).message);
+    modal.showModal();
+  }
+};
 
 const createTable = (restaurants: Restaurant[]) => {
   const table = document.querySelector('tbody');
@@ -27,35 +64,13 @@ const createTable = (restaurants: Restaurant[]) => {
   table.innerHTML = '';
   restaurants.forEach((restaurant) => {
     const tr = restaurantRow(restaurant);
+    tr.dataset.id = restaurant._id;
+    tr.addEventListener('click', () => selectRestaurant(restaurant));
     table.appendChild(tr);
-    tr.addEventListener('click', async () => {
-      try {
-        // remove all highlights
-        const allHighs = document.querySelectorAll('.highlight');
-        allHighs.forEach((high) => {
-          high.classList.remove('highlight');
-        });
-        // add highlight
-        tr.classList.add('highlight');
-        // add restaurant data to modal
-        modal.innerHTML = '';
-
-        // fetch menu
-        const menu = await fetchData<Menu>(
-          apiUrl + `/restaurants/daily/${restaurant._id}/fi`
-        );
-        console.log(menu);
-
-        const menuHtml = restaurantModal(restaurant, menu);
-        modal.insertAdjacentHTML('beforeend', menuHtml);
-
-        modal.showModal();
-      } catch (error) {
-        modal.innerHTML = errorModal((error as Error).message);
-        modal.showModal();
-      }
-    });
   });
+
+  // keep the map markers in sync with the table
+  showRestaurantMarkers(restaurants, selectRestaurant);
 };
 
 const fillSelect = (select: HTMLSelectElement, values: string[]) => {
@@ -89,11 +104,12 @@ const setupFilters = (restaurants: Restaurant[]) => {
   );
 
   const applyFilters = () => {
+    const searchText = searchInput.value.trim().toLowerCase();
     const filtered = restaurants.filter(
       (restaurant) =>
         (!citySelect.value || restaurant.city === citySelect.value) &&
         (!companySelect.value || restaurant.company === companySelect.value) &&
-        restaurant.name.toLowerCase().includes(searchInput.value.toLowerCase())
+        restaurant.name.toLowerCase().includes(searchText)
     );
     createTable(filtered);
   };
@@ -132,6 +148,7 @@ const success = async (pos: GeolocationPosition) => {
     });
     createTable(restaurants);
     setupFilters(restaurants);
+    showUserLocation(crd.latitude, crd.longitude);
   } catch (error) {
     modal.innerHTML = errorModal((error as Error).message);
     modal.showModal();
@@ -139,3 +156,5 @@ const success = async (pos: GeolocationPosition) => {
 };
 
 navigator.geolocation.getCurrentPosition(success, error, positionOptions);
+
+
